@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>DRAWING A TREE — Hand Grow</title>
+<title>GROWING A TREE — Hand Grow</title>
 <style>
   :root{
     --paper:#f5f4ee;
@@ -23,7 +23,7 @@
     position:absolute;right:22px;top:22px;
     width:min(260px,30vw);aspect-ratio:4/3;
     object-fit:cover;transform:scaleX(-1);
-    opacity:.18;filter:grayscale(1) contrast(.9);
+    opacity:.42;filter:none;
     border:1px solid rgba(17,17,17,.18);
     z-index:1;background:#ddd;
   }
@@ -94,7 +94,7 @@
   <div id="pinchIndicator"></div>
 
   <header>
-    <h1>DRAWING A TREE</h1>
+    <h1>GROWING A TREE</h1>
     <p>rule / variation / hand grow</p>
   </header>
 
@@ -102,7 +102,7 @@
 
   <section class="panel">
     <div class="rule">
-      <label>BRANCH</label><div class="branch-fixed">2 / BINARY</div><output>fixed</output>
+      <label>BRANCH</label><div class="branch-fixed">2 / 3 RANDOM</div><output>random</output>
     </div>
     <div class="rule">
       <label for="angle">ANGLE</label><input id="angle" type="range" min="5" max="55" value="25"><output id="angleOut">25°</output>
@@ -232,14 +232,52 @@ function drawBranch(x,y,len,angle,width,depth,index,p){
 
   if(depth===1)return;
 
-  const asym=signedRandom(index*5+3)*p.variation*.16;
-  const leftLen=localLen*p.lenRatio*(1+asym);
-  const rightLen=localLen*p.lenRatio*(1-asym);
-  const jl=signedRandom(index*5+4)*p.variation*.40;
-  const jr=signedRandom(index*5+5)*p.variation*.40;
+  // Each node deterministically chooses 2 or 3 children from the current tree seed.
+  // RESET changes the seed, creating a new branching pattern.
+  const childCount = random01(index * 11 + 7) < 0.5 ? 2 : 3;
 
-  drawBranch(x2,y2,leftLen,localAngle-p.angle*(1+jl),width*p.widthRatio,depth-1,index*2+1,p);
-  drawBranch(x2,y2,rightLen,localAngle+p.angle*(1+jr),width*p.widthRatio,depth-1,index*2+2,p);
+  if(childCount === 2){
+    const asym=signedRandom(index*5+3)*p.variation*.16;
+    const leftLen=localLen*p.lenRatio*(1+asym);
+    const rightLen=localLen*p.lenRatio*(1-asym);
+    const jl=signedRandom(index*5+4)*p.variation*.40;
+    const jr=signedRandom(index*5+5)*p.variation*.40;
+
+    drawBranch(
+      x2,y2,leftLen,
+      localAngle-p.angle*(1+jl),
+      width*p.widthRatio,depth-1,index*3+1,p
+    );
+    drawBranch(
+      x2,y2,rightLen,
+      localAngle+p.angle*(1+jr),
+      width*p.widthRatio,depth-1,index*3+2,p
+    );
+  }else{
+    // Three-way split: left, center, right.
+    const offsets=[-1,0,1];
+    offsets.forEach((side,k)=>{
+      const lenVar=1+signedRandom(index*13+k+1)*p.variation*.18;
+      const splitVar=signedRandom(index*17+k+1)*p.variation*.32;
+      const centerWander = side===0
+        ? signedRandom(index*19+3)*p.variation*.18
+        : 0;
+      const childAngle =
+        localAngle +
+        side*p.angle*(1+splitVar) +
+        centerWander;
+
+      drawBranch(
+        x2,y2,
+        localLen*p.lenRatio*lenVar,
+        childAngle,
+        width*p.widthRatio,
+        depth-1,
+        index*3+k+1,
+        p
+      );
+    });
+  }
 }
 
 function draw(){
