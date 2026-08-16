@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DRAWING A TREE — Rule / Variation</title>
+<style>
+  :root{
+    --paper:#f5f4ee;
+    --ink:#111;
+    --muted:#6f6f68;
+    --line:#c9c7bd;
+    --panel:rgba(245,244,238,.90);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;width:100%;height:100%;background:var(--paper);color:var(--ink)}
+  body{
+    font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    overflow:hidden;
+  }
+  #app{
+    position:relative;
+    width:100%;
+    height:100dvh;
+    min-height:520px;
+  }
+  canvas{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    display:block;
+    touch-action:none;
+  }
+  header{
+    position:absolute;
+    z-index:2;
+    top:22px;
+    left:28px;
+    pointer-events:none;
+  }
+  h1{
+    margin:0;
+    font-size:15px;
+    font-weight:600;
+    letter-spacing:.12em;
+  }
+  header p{
+    margin:5px 0 0;
+    font-size:10px;
+    color:var(--muted);
+    letter-spacing:.11em;
+    text-transform:uppercase;
+  }
+  .panel{
+    position:absolute;
+    z-index:3;
+    left:28px;
+    bottom:26px;
+    width:min(330px, calc(100vw - 56px));
+    padding:16px 17px 15px;
+    background:var(--panel);
+    backdrop-filter: blur(7px);
+    -webkit-backdrop-filter: blur(7px);
+    border:1px solid rgba(17,17,17,.14);
+  }
+  .rule{
+    display:grid;
+    grid-template-columns:82px 1fr 50px;
+    align-items:center;
+    gap:10px;
+    min-height:31px;
+  }
+  .rule label{
+    font-size:10px;
+    letter-spacing:.08em;
+  }
+  .rule output{
+    text-align:right;
+    font-size:10px;
+    font-variant-numeric:tabular-nums;
+    color:#333;
+  }
+  input[type=range]{
+    width:100%;
+    height:18px;
+    margin:0;
+    background:transparent;
+    appearance:none;
+    -webkit-appearance:none;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:1px;
+    background:#555;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    appearance:none;
+    -webkit-appearance:none;
+    width:9px;height:9px;
+    margin-top:-4px;
+    background:var(--ink);
+    border:0;
+    border-radius:50%;
+  }
+  input[type=range]::-moz-range-track{height:1px;background:#555}
+  input[type=range]::-moz-range-thumb{
+    width:9px;height:9px;background:var(--ink);border:0;border-radius:50%;
+  }
+  .branch-fixed{
+    height:18px;
+    display:flex;
+    align-items:center;
+    font-size:10px;
+    letter-spacing:.08em;
+    color:#222;
+  }
+  .buttons{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-top:11px;
+  }
+  button{
+    border:1px solid #111;
+    background:transparent;
+    color:#111;
+    height:35px;
+    font:600 10px/1 Arial, sans-serif;
+    letter-spacing:.12em;
+    cursor:pointer;
+  }
+  button:hover{background:#111;color:var(--paper)}
+  button:active{transform:translateY(1px)}
+  #grow{background:#111;color:var(--paper)}
+  #grow:hover{background:transparent;color:#111}
+  .status{
+    position:absolute;
+    z-index:2;
+    right:28px;
+    bottom:28px;
+    font-size:10px;
+    letter-spacing:.08em;
+    color:var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .hint{
+    position:absolute;
+    z-index:2;
+    right:28px;
+    top:24px;
+    max-width:230px;
+    text-align:right;
+    font-size:9px;
+    line-height:1.55;
+    letter-spacing:.04em;
+    color:var(--muted);
+  }
+  @media (max-width:700px){
+    header{top:18px;left:18px}
+    .panel{left:18px;bottom:18px;width:calc(100vw - 36px)}
+    .status{right:18px;bottom:250px}
+    .hint{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="tree"></canvas>
+
+  <header>
+    <h1>DRAWING A TREE</h1>
+    <p>rule / variation</p>
+  </header>
+
+  <div class="hint">
+    One branch becomes two.<br>
+    Change only the rule, then grow again.
+  </div>
+
+  <section class="panel" aria-label="tree rules">
+    <div class="rule">
+      <label>BRANCH</label>
+      <div class="branch-fixed">2 / BINARY</div>
+      <output>fixed</output>
+    </div>
+
+    <div class="rule">
+      <label for="angle">ANGLE</label>
+      <input id="angle" type="range" min="5" max="55" value="25" step="1">
+      <output id="angleOut">25°</output>
+    </div>
+
+    <div class="rule">
+      <label for="length">LENGTH</label>
+      <input id="length" type="range" min="50" max="88" value="72" step="1">
+      <output id="lengthOut">72%</output>
+    </div>
+
+    <div class="rule">
+      <label for="width">WIDTH</label>
+      <input id="width" type="range" min="45" max="82" value="62" step="1">
+      <output id="widthOut">62%</output>
+    </div>
+
+    <div class="rule">
+      <label for="variation">VARIATION</label>
+      <input id="variation" type="range" min="0" max="30" value="8" step="1">
+      <output id="variationOut">8%</output>
+    </div>
+
+    <div class="buttons">
+      <button id="grow">GROW</button>
+      <button id="reset">RESET</button>
+    </div>
+  </section>
+
+  <div class="status" id="status">GENERATION 0 / 10</div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('tree');
+  const ctx = canvas.getContext('2d', { alpha:true });
+
+  const controls = {
+    angle: document.getElementById('angle'),
+    length: document.getElementById('length'),
+    width: document.getElementById('width'),
+    variation: document.getElementById('variation'),
+  };
+  const outputs = {
+    angle: document.getElementById('angleOut'),
+    length: document.getElementById('lengthOut'),
+    width: document.getElementById('widthOut'),
+    variation: document.getElementById('variationOut'),
+  };
+  const growBtn = document.getElementById('grow');
+  const resetBtn = document.getElementById('reset');
+  const status = document.getElementById('status');
+
+  let generation = 0;
+  const maxGeneration = 10;
+  let seed = Math.random() * 100000;
+  let cssW = 0, cssH = 0, dpr = 1;
+
+  // Seeded randomness makes the same tree remain stable while sliders are adjusted.
+  function random01(i) {
+    const x = Math.sin(seed + i * 12.9898) * 43758.5453123;
+    return x - Math.floor(x);
+  }
+  function signedRandom(i) { return random01(i) * 2 - 1; }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = canvas.getBoundingClientRect();
+    cssW = rect.width;
+    cssH = rect.height;
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    draw();
+  }
+
+  function params() {
+    return {
+      angle: Number(controls.angle.value) * Math.PI / 180,
+      lenRatio: Number(controls.length.value) / 100,
+      widthRatio: Number(controls.width.value) / 100,
+      variation: Number(controls.variation.value) / 100
+    };
+  }
+
+  function drawBranch(x, y, len, angle, width, depth, index, p) {
+    if (depth <= 0 || len < 1.4 || width < .18) return;
+
+    // Small rule-preserving irregularity.
+    const angleJitter = signedRandom(index * 5 + 1) * p.variation * 0.45;
+    const lengthJitter = 1 + signedRandom(index * 5 + 2) * p.variation * 0.32;
+    const localAngle = angle + angleJitter;
+    const localLen = len * lengthJitter;
+
+    const x2 = x + Math.cos(localAngle) * localLen;
+    const y2 = y + Math.sin(localAngle) * localLen;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x2, y2);
+    ctx.lineWidth = Math.max(.5, width);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#111';
+    ctx.stroke();
+
+    if (depth === 1) return;
+
+    const asym = signedRandom(index * 5 + 3) * p.variation * 0.16;
+    const leftLen  = localLen * p.lenRatio * (1 + asym);
+    const rightLen = localLen * p.lenRatio * (1 - asym);
+
+    const splitJitterL = signedRandom(index * 5 + 4) * p.variation * 0.40;
+    const splitJitterR = signedRandom(index * 5 + 5) * p.variation * 0.40;
+
+    drawBranch(
+      x2, y2,
+      leftLen,
+      localAngle - p.angle * (1 + splitJitterL),
+      width * p.widthRatio,
+      depth - 1,
+      index * 2 + 1,
+      p
+    );
+
+    drawBranch(
+      x2, y2,
+      rightLen,
+      localAngle + p.angle * (1 + splitJitterR),
+      width * p.widthRatio,
+      depth - 1,
+      index * 2 + 2,
+      p
+    );
+  }
+
+  function drawGround() {
+    const y = cssH - Math.max(26, cssH * .045);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    for (let x = 0; x <= cssW + 16; x += 16) {
+      const yy = y + Math.sin(x * .019 + seed) * .7;
+      ctx.lineTo(x, yy);
+    }
+    ctx.lineWidth = .8;
+    ctx.strokeStyle = '#555';
+    ctx.stroke();
+    return y;
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, cssW, cssH);
+    ctx.fillStyle = '#f5f4ee';
+    ctx.fillRect(0, 0, cssW, cssH);
+
+    const groundY = drawGround();
+    status.textContent = `GENERATION ${generation} / ${maxGeneration}`;
+
+    // generation 0 = trunk only.
+    const p = params();
+    const treeDepth = Math.max(1, generation + 1);
+    const available = Math.min(cssH * .67, cssW * .42);
+    const trunkLen = Math.max(90, Math.min(210, available * .46));
+    const trunkWidth = Math.max(11, Math.min(25, cssW * .022));
+
+    drawBranch(
+      cssW * .58,
+      groundY,
+      trunkLen,
+      -Math.PI / 2,
+      trunkWidth,
+      treeDepth,
+      1,
+      p
+    );
+  }
+
+  function updateLabels() {
+    outputs.angle.value = controls.angle.value + '°';
+    outputs.length.value = controls.length.value + '%';
+    outputs.width.value = controls.width.value + '%';
+    outputs.variation.value = controls.variation.value + '%';
+    draw();
+  }
+
+  Object.values(controls).forEach(el => {
+    el.addEventListener('input', updateLabels);
+  });
+
+  growBtn.addEventListener('click', () => {
+    if (generation < maxGeneration) generation++;
+    draw();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    generation = 0;
+    seed = Math.random() * 100000;
+    draw();
+  });
+
+  window.addEventListener('resize', resize, { passive:true });
+  resize();
+})();
+</script>
+</body>
+</html>
