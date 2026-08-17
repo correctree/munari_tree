@@ -16,18 +16,19 @@
   body{font-family:"Helvetica Neue",Arial,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif}
   #app{position:relative;width:100%;height:100dvh;min-height:520px;background:#111}
   #camera{
-    position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    position:absolute;inset:-2%;width:104%;height:104%;object-fit:cover;
     transform:scaleX(-1);background:#111;z-index:0;
+    filter:blur(9px);
   }
   #scene{
-    position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;
+    position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none;
   }
   #sun{
     position:absolute;left:0;top:0;width:180px;height:180px;object-fit:contain;
     transform:translate(-50%,-50%);
     transform-origin:center center;
     z-index:2;pointer-events:none;display:none;
-    will-change:left,top,width,height,transform;
+    will-change:left,top,width,height;
   }
   header{
     position:absolute;z-index:5;top:22px;left:28px;color:white;
@@ -105,6 +106,12 @@
     <div class="rule">
       <label for="variation">VARIATION</label><input id="variation" type="range" min="0" max="30" value="8"><output id="variationOut">8%</output>
     </div>
+    <div class="rule">
+      <label for="faceX">FACE X</label><input id="faceX" type="range" min="-300" max="300" value="0"><output id="faceXOut">0px</output>
+    </div>
+    <div class="rule">
+      <label for="faceY">FACE Y</label><input id="faceY" type="range" min="-300" max="300" value="0"><output id="faceYOut">0px</output>
+    </div>
     <div class="buttons">
       <button id="cameraStart" class="primary">CAMERA START</button>
       <button id="reset">RESET</button>
@@ -143,13 +150,17 @@ const controls={
   angle:document.getElementById('angle'),
   length:document.getElementById('length'),
   width:document.getElementById('width'),
-  variation:document.getElementById('variation')
+  variation:document.getElementById('variation'),
+  faceX:document.getElementById('faceX'),
+  faceY:document.getElementById('faceY')
 };
 const outputs={
   angle:document.getElementById('angleOut'),
   length:document.getElementById('lengthOut'),
   width:document.getElementById('widthOut'),
-  variation:document.getElementById('variationOut')
+  variation:document.getElementById('variationOut'),
+  faceX:document.getElementById('faceXOut'),
+  faceY:document.getElementById('faceYOut')
 };
 
 let cssW=0,cssH=0,dpr=1;
@@ -176,7 +187,7 @@ let lastFrameTime=performance.now();
 let leftOpenHoldStart=0;
 const LEFT_OPEN_HOLD_MS=280;
 
-let faceSmooth={x:.5,y:.35,size:160,angle:0,ready:false};
+let faceSmooth={x:.5,y:.35,size:160,ready:false};
 
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
@@ -308,6 +319,8 @@ function updateLabels(){
   outputs.length.value=controls.length.value+'%';
   outputs.width.value=controls.width.value+'%';
   outputs.variation.value=controls.variation.value+'%';
+  outputs.faceX.value=controls.faceX.value+'px';
+  outputs.faceY.value=controls.faceY.value+'px';
   draw();
 }
 Object.values(controls).forEach(el=>el.addEventListener('input',updateLabels));
@@ -395,23 +408,23 @@ function updateFace(faceLm){
   const faceH=Math.abs(chin.y-top.y)*cssH;
   const size=Math.max(90,Math.max(faceW*1.75,faceH*1.35));
 
-  const dx=(1-right.x)-(1-left.x);
-  const dy=right.y-left.y;
-  const angle=Math.atan2(dy,dx);
-
   const ease=faceSmooth.ready?.22:1;
   faceSmooth.x+=(cx-faceSmooth.x)*ease;
   faceSmooth.y+=(cy-faceSmooth.y)*ease;
   faceSmooth.size+=(size-faceSmooth.size)*ease;
-  faceSmooth.angle+=(angle-faceSmooth.angle)*.18;
   faceSmooth.ready=true;
 
+  const offsetX=Number(controls.faceX.value);
+  const offsetY=Number(controls.faceY.value);
+
   sun.style.display='block';
-  sun.style.left=faceSmooth.x+'px';
-  sun.style.top=faceSmooth.y+'px';
+  sun.style.left=(faceSmooth.x+offsetX)+'px';
+  sun.style.top=(faceSmooth.y+offsetY)+'px';
   sun.style.width=faceSmooth.size+'px';
   sun.style.height=faceSmooth.size+'px';
-  sun.style.transform=`translate(-50%,-50%) rotate(${faceSmooth.angle}rad)`;
+
+  // Keep the artwork upright even when the user's head tilts.
+  sun.style.transform='translate(-50%,-50%)';
   faceStatus.textContent='FACE: TRACKING';
 }
 
@@ -518,6 +531,7 @@ resetBtn.addEventListener('click',()=>{
 });
 
 window.addEventListener('resize',resize,{passive:true});
+updateLabels();
 resize();
 </script>
 </body>
