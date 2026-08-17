@@ -225,9 +225,15 @@ function drawLeaf(x,y,angle,size,index,reveal=1){
 function drawLeaves(now){
   if(!leafPoints.length) return;
 
-  // Put leaves on every terminal branch tip.
-  // Sort by id so the progressive 2-second growth stays stable from frame to frame.
-  const selected = [...leafPoints].sort((a,b) => a.id - b.id);
+  // Reduce the current total to 80%, while keeping the leaves distributed across the whole crown.
+  const allLeaves = [...leafPoints].sort((a,b) => a.id - b.id);
+  const keepCount = Math.max(1, Math.floor(allLeaves.length * 0.8));
+  const selected = [];
+
+  for(let i = 0; i < keepCount; i++){
+    const idx = Math.floor(i * allLeaves.length / keepCount);
+    selected.push(allLeaves[idx]);
+  }
 
   if(leafGrowthStart === null) leafGrowthStart = now;
   const progress = Math.max(0, Math.min(1, (now - leafGrowthStart) / LEAF_GROW_DURATION));
