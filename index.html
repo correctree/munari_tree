@@ -194,16 +194,32 @@ function drawLeaf(x,y,angle,size){
   ctx.save();
   ctx.translate(x,y);
   ctx.rotate(angle);
-  ctx.fillStyle='rgba(108,136,42,.96)';
+
+  // stem
+  ctx.strokeStyle='rgba(72,92,28,.95)';
+  ctx.lineWidth=Math.max(0.7,size*0.14);
   ctx.beginPath();
-  ctx.ellipse(0,0,size*1.25,size*.85,0,0,Math.PI*2);
+  ctx.moveTo(-size*0.95,0);
+  ctx.lineTo(-size*0.22,0);
+  ctx.stroke();
+
+  // body
+  ctx.fillStyle='rgba(112,146,42,.98)';
+  ctx.beginPath();
+  ctx.ellipse(0,0,size*1.25,size*.86,0,0,Math.PI*2);
   ctx.fill();
 
-  // slight highlight to make the leaves feel layered
-  ctx.fillStyle='rgba(182,205,76,.72)';
+  // outline
+  ctx.strokeStyle='rgba(78,103,30,.85)';
+  ctx.lineWidth=Math.max(0.6,size*0.08);
+  ctx.stroke();
+
+  // highlight
+  ctx.fillStyle='rgba(194,220,89,.72)';
   ctx.beginPath();
-  ctx.ellipse(size*.18,-size*.08,size*.62,size*.38,0,0,Math.PI*2);
+  ctx.ellipse(size*.18,-size*.08,size*.62,size*.36,0,0,Math.PI*2);
   ctx.fill();
+
   ctx.restore();
 }
 
@@ -259,7 +275,20 @@ function resize(){
 }
 
 function drawBranch(x,y,len,angle,width,depth,index,p,sway=0){
-  if(depth<=0||len<1.4||width<.18)return;
+  if(depth<=0)return;
+
+  // If a branch becomes too short or thin, end it with a leaf when the tree is fully grown.
+  if((len<1.4||width<.18) && generation>=maxGeneration){
+    leafPoints.push({
+      x:x,
+      y:y,
+      angle:angle + signedRandom(index*29+1)*0.8,
+      size:Math.max(5.5, Math.min(10.5, width*1.8 + 3))
+    });
+    return;
+  }else if(len<1.4||width<.18){
+    return;
+  }
 
   const angleJitter=signedRandom(index*5+1)*p.variation*.45;
   const lengthJitter=1+signedRandom(index*5+2)*p.variation*.32;
@@ -284,7 +313,7 @@ function drawBranch(x,y,len,angle,width,depth,index,p,sway=0){
         x:x2,
         y:y2,
         angle:localAngle + signedRandom(index*23+1)*0.6,
-        size:Math.max(3.6, Math.min(8.5, width*0.85))
+        size:Math.max(6.2, Math.min(11.5, width*1.15 + 1.2))
       });
     }
     return;
@@ -350,7 +379,7 @@ function doPinchAction(){
   }else if(generation<maxGeneration){
     generation++;
     if(generation>=maxGeneration){
-      message.textContent='FULL GROWN — LEAVES APPEAR';
+      message.textContent='FULL GROWN — LEAVES HAVE APPEARED';
     }else{
       message.textContent=`GROW — GENERATION ${generation}`;
     }
