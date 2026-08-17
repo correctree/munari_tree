@@ -125,6 +125,7 @@
   <div class="status">
     <div id="generationStatus">GENERATION —</div>
     <div id="handStatus">HAND: OFF</div>
+    <div id="windStatus">WIND: OFF</div>
   </div>
 </div>
 
@@ -145,6 +146,7 @@ const resetBtn = document.getElementById('reset');
 const message = document.getElementById('message');
 const genStatus = document.getElementById('generationStatus');
 const handStatus = document.getElementById('handStatus');
+const windStatus = document.getElementById('windStatus');
 const pinchIndicator = document.getElementById('pinchIndicator');
 
 const controls = {
@@ -171,6 +173,14 @@ let lastVideoTime = -1;
 let previousPinch = false;
 let lastPinchTime = 0;
 
+let windActive = false;
+let windStrength = 0;
+let targetWindStrength = 0;
+let windPhase = 0;
+let lastFrameTime = performance.now();
+let leftOpenHoldStart = 0;
+const LEFT_OPEN_HOLD_MS = 280;
+
 // Pinch hysteresis: close threshold turns ON, wider threshold turns OFF.
 // Distance is normalized by wrist-to-middle-MCP hand size.
 const PINCH_ON = 0.34;
@@ -183,6 +193,27 @@ function random01(i){
 }
 function signedRandom(i){return random01(i)*2-1}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
+
+function handOpenness(lm){
+  const wrist=lm[0];
+  const palmScale=Math.max(.001,dist(lm[0],lm[9]));
+  const tips=[4,8,12,16,20];
+  const bases=[2,5,9,13,17];
+  let score=0;
+  for(let i=0;i<tips.length;i++){
+    const tipDist=dist(wrist,lm[tips[i]])/palmScale;
+    const baseDist=dist(wrist,lm[bases[i]])/palmScale;
+    const extension=tipDist-baseDist;
+    score += clamp((extension-.15)/.65,0,1);
+  }
+  return score/tips.length;
+}
+
+function handednessLabel(results,i){
+  const cat=results.handednesses?.[i]?.[0];
+  return cat?.categoryName || cat?.displayName || '';
+}
 
 function params(){
   return {
@@ -218,11 +249,14 @@ function drawGround(){
   return y;
 }
 
-function drawBranch(x,y,len,angle,width,depth,index,p){
+function drawBranch(x,y,len,angle,width,depth,index,p,sway=0){
   if(depth<=0||len<1.4||width<.18)return;
   const angleJitter=signedRandom(index*5+1)*p.variation*.45;
   const lengthJitter=1+signedRandom(index*5+2)*p.variation*.32;
-  const localAngle=angle+angleJitter;
+  const depthFactor=1-Math.min(1,width/26);
+  const gust=Math.sin(windPhase+index*.37)*.24+.76;
+  const windBend=sway*depthFactor*gust;
+  const localAngle=angle+angleJitter+windBend;
   const localLen=len*lengthJitter;
   const x2=x+Math.cos(localAngle)*localLen;
   const y2=y+Math.sin(localAngle)*localLen;
@@ -246,12 +280,12 @@ function drawBranch(x,y,len,angle,width,depth,index,p){
     drawBranch(
       x2,y2,leftLen,
       localAngle-p.angle*(1+jl),
-      width*p.widthRatio,depth-1,index*3+1,p
+      width*p.widthRatio,depth-1,index*3+1,p,sway
     );
     drawBranch(
       x2,y2,rightLen,
       localAngle+p.angle*(1+jr),
-      width*p.widthRatio,depth-1,index*3+2,p
+      width*p.widthRatio,depth-1,index*3+2,p,sway
     );
   }else{
     // Three-way split: left, center, right.
@@ -274,7 +308,8 @@ function drawBranch(x,y,len,angle,width,depth,index,p){
         width*p.widthRatio,
         depth-1,
         index*3+k+1,
-        p
+        p,
+        sway
       );
     });
   }
@@ -296,7 +331,8 @@ function draw(){
   const available=Math.min(cssH*.67,cssW*.42);
   const trunkLen=Math.max(90,Math.min(210,available*.46));
   const trunkWidth=Math.max(11,Math.min(25,cssW*.022));
-  drawBranch(cssW*.58,groundY,trunkLen,-Math.PI/2,trunkWidth,depth,1,p);
+  const sway=windActive ? windStrength*.34 : 0;
+  drawBranch(cssW*.58,groundY,trunkLen,-Math.PI/2,trunkWidth,depth,1,p,sway);
 }
 
 function doPinchAction(){
@@ -321,30 +357,36 @@ function updateLabels(){
 }
 Object.values(controls).forEach(el=>el.addEventListener('input',updateLabels));
 
-function drawHand(landmarks, pinching){
+function drawHands(hands){
   const r=overlay.getBoundingClientRect();
   octx.clearRect(0,0,r.width,r.height);
-  if(!landmarks)return;
-
-  // Only thumb and index are shown to keep the visual language minimal.
-  const ids=[0,1,2,3,4,5,6,7,8];
-  octx.strokeStyle='rgba(17,17,17,.7)';
-  octx.lineWidth=1;
-  octx.beginPath();
-  for(let k=0;k<ids.length;k++){
-    const lm=landmarks[ids[k]];
-    const x=(1-lm.x)*r.width;
-    const y=lm.y*r.height;
-    if(k===0)octx.moveTo(x,y); else octx.lineTo(x,y);
+  if(!hands?.length)return;
+  const chains=[
+    [0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],
+    [0,13,14,15,16],[0,17,18,19,20],[5,9,13,17]
+  ];
+  for(const hand of hands){
+    const lm=hand.landmarks;
+    octx.strokeStyle='rgba(17,17,17,.62)';
+    octx.lineWidth=1;
+    for(const chain of chains){
+      octx.beginPath();
+      chain.forEach((id,k)=>{
+        const p=lm[id];
+        const x=(1-p.x)*r.width;
+        const y=p.y*r.height;
+        if(k===0)octx.moveTo(x,y);else octx.lineTo(x,y);
+      });
+      octx.stroke();
+    }
+    [4,8,12,16,20].forEach(id=>{
+      const p=lm[id];
+      octx.beginPath();
+      octx.arc((1-p.x)*r.width,p.y*r.height,3,0,Math.PI*2);
+      octx.fillStyle='#111';
+      octx.fill();
+    });
   }
-  octx.stroke();
-
-  [4,8].forEach(id=>{
-    const lm=landmarks[id];
-    octx.beginPath();
-    octx.arc((1-lm.x)*r.width,lm.y*r.height,pinching?5:3,0,Math.PI*2);
-    octx.fillStyle='#111';octx.fill();
-  });
 }
 
 async function setupHandLandmarker(){
@@ -362,7 +404,7 @@ async function setupHandLandmarker(){
       delegate:"GPU"
     },
     runningMode:"VIDEO",
-    numHands:1,
+    numHands:2,
     minHandDetectionConfidence:.6,
     minHandPresenceConfidence:.6,
     minTrackingConfidence:.6
@@ -400,31 +442,67 @@ async function startCamera(){
 function predictLoop(){
   if(!cameraRunning)return;
 
+  const frameNow=performance.now();
+  const dt=Math.min(50,frameNow-lastFrameTime);
+  lastFrameTime=frameNow;
+  windStrength+=(targetWindStrength-windStrength)*Math.min(1,dt*.008);
+  windPhase+=dt*(.0022+windStrength*.0065);
+  if(windActive && generation>=0)draw();
+
   if(video.readyState>=2 && video.currentTime!==lastVideoTime){
     lastVideoTime=video.currentTime;
 
-    const results=handLandmarker.detectForVideo(video,performance.now());
-    const landmarks=results.landmarks?.[0];
+    const now=performance.now();
+    const results=handLandmarker.detectForVideo(video,now);
+    const all=results.landmarks || [];
 
-    if(landmarks){
-      const thumb=landmarks[4];
-      const index=landmarks[8];
-      const wrist=landmarks[0];
-      const middleMCP=landmarks[9];
+    if(all.length){
+      const hands=all.map((lm,i)=>({
+        landmarks:lm,
+        label:handednessLabel(results,i),
+        openness:handOpenness(lm)
+      }));
 
-      const handScale=Math.max(.001,dist(wrist,middleMCP));
-      const pinchRatio=dist(thumb,index)/handScale;
+      const left=hands.find(h=>h.label==='Left');
+      const right=hands.find(h=>h.label==='Right');
+
+      let bestPinchRatio=999;
+      for(const h of hands){
+        const lm=h.landmarks;
+        const handScale=Math.max(.001,dist(lm[0],lm[9]));
+        bestPinchRatio=Math.min(bestPinchRatio,dist(lm[4],lm[8])/handScale);
+      }
 
       let isPinching=previousPinch;
-      if(!previousPinch && pinchRatio<PINCH_ON)isPinching=true;
-      if(previousPinch && pinchRatio>PINCH_OFF)isPinching=false;
+      if(!previousPinch && bestPinchRatio<PINCH_ON)isPinching=true;
+      if(previousPinch && bestPinchRatio>PINCH_OFF)isPinching=false;
 
-      handStatus.textContent=`HAND: ${isPinching?'PINCH':'OPEN'}  ${pinchRatio.toFixed(2)}`;
+      if(left && left.openness>.72){
+        if(!leftOpenHoldStart)leftOpenHoldStart=now;
+        if(!windActive && now-leftOpenHoldStart>LEFT_OPEN_HOLD_MS){
+          windActive=true;
+          message.textContent='WIND STARTED — OPEN / CLOSE RIGHT HAND TO CHANGE STRENGTH';
+        }
+      }else{
+        leftOpenHoldStart=0;
+      }
+
+      if(windActive){
+        targetWindStrength=right ? clamp((right.openness-.18)/.72,0,1) : 0;
+      }else{
+        targetWindStrength=0;
+      }
+
+      const leftTxt=left ? `L ${(left.openness*100).toFixed(0)}%` : 'L —';
+      const rightTxt=right ? `R ${(right.openness*100).toFixed(0)}%` : 'R —';
+      handStatus.textContent=`HAND: ${leftTxt} / ${rightTxt}`;
+      windStatus.textContent=windActive
+        ? `WIND: ${Math.round(windStrength*100)}%`
+        : 'WIND: OFF';
+
       pinchIndicator.classList.toggle('on',isPinching);
-      drawHand(landmarks,isPinching);
+      drawHands(hands);
 
-      const now=performance.now();
-      // Trigger only on the OPEN -> PINCH edge.
       if(isPinching && !previousPinch && now-lastPinchTime>PINCH_COOLDOWN_MS){
         lastPinchTime=now;
         doPinchAction();
@@ -432,9 +510,12 @@ function predictLoop(){
       previousPinch=isPinching;
     }else{
       previousPinch=false;
+      leftOpenHoldStart=0;
+      if(windActive)targetWindStrength=0;
       handStatus.textContent='HAND: SEARCHING';
+      windStatus.textContent=windActive ? `WIND: ${Math.round(windStrength*100)}%` : 'WIND: OFF';
       pinchIndicator.classList.remove('on');
-      drawHand(null,false);
+      drawHands([]);
     }
   }
   requestAnimationFrame(predictLoop);
@@ -446,6 +527,11 @@ resetBtn.addEventListener('click',()=>{
   generation=-1;
   seed=Math.random()*100000;
   previousPinch=false;
+  windActive=false;
+  windStrength=0;
+  targetWindStrength=0;
+  leftOpenHoldStart=0;
+  windStatus.textContent='WIND: OFF';
   message.textContent=cameraRunning
     ? 'PINCH THUMB + INDEX TO CREATE THE FIRST TRUNK'
     : 'CAMERA START → PINCH TO CREATE THE FIRST TRUNK';
