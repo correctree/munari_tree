@@ -225,13 +225,9 @@ function drawLeaf(x,y,angle,size,index,reveal=1){
 function drawLeaves(now){
   if(!leafPoints.length) return;
 
-  // Fewer leaves than before: use only a deterministic subset.
-  const selected = leafPoints
-    .filter(leaf => random01(leaf.id * 53 + 9) < 0.24)
-    .sort((a,b) => a.id - b.id)
-    .slice(0, 80);
-
-  if(!selected.length) return;
+  // Put leaves on every terminal branch tip.
+  // Sort by id so the progressive 2-second growth stays stable from frame to frame.
+  const selected = [...leafPoints].sort((a,b) => a.id - b.id);
 
   if(leafGrowthStart === null) leafGrowthStart = now;
   const progress = Math.max(0, Math.min(1, (now - leafGrowthStart) / LEAF_GROW_DURATION));
