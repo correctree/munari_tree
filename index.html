@@ -188,6 +188,30 @@ let leftOpenHoldStart=0;
 const LEFT_OPEN_HOLD_MS=280;
 
 let faceSmooth={x:.5,y:.35,size:160,ready:false};
+let leafPoints=[];
+
+function drawLeaf(x,y,angle,size){
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.rotate(angle);
+  ctx.fillStyle='rgba(108,136,42,.96)';
+  ctx.beginPath();
+  ctx.ellipse(0,0,size*1.25,size*.85,0,0,Math.PI*2);
+  ctx.fill();
+
+  // slight highlight to make the leaves feel layered
+  ctx.fillStyle='rgba(182,205,76,.72)';
+  ctx.beginPath();
+  ctx.ellipse(size*.18,-size*.08,size*.62,size*.38,0,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawLeaves(){
+  for(const leaf of leafPoints){
+    drawLeaf(leaf.x, leaf.y, leaf.angle, leaf.size);
+  }
+}
 
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
@@ -254,7 +278,17 @@ function drawBranch(x,y,len,angle,width,depth,index,p,sway=0){
   ctx.strokeStyle='rgba(17,17,17,.94)';
   ctx.stroke();
 
-  if(depth===1)return;
+  if(depth===1){
+    if(generation>=maxGeneration){
+      leafPoints.push({
+        x:x2,
+        y:y2,
+        angle:localAngle + signedRandom(index*23+1)*0.6,
+        size:Math.max(3.6, Math.min(8.5, width*0.85))
+      });
+    }
+    return;
+  }
 
   const childCount=random01(index*11+7)<.5?2:3;
 
@@ -282,6 +316,8 @@ function drawBranch(x,y,len,angle,width,depth,index,p,sway=0){
 
 function draw(){
   ctx.clearRect(0,0,cssW,cssH);
+  leafPoints = [];
+
   if(generation<0){
     genStatus.textContent='GENERATION —';
     return;
@@ -296,9 +332,15 @@ function draw(){
   const trunkWidth=Math.max(12,Math.min(27,cssW*.022));
   const baseX=cssW*.50;
   const baseY=cssH*.96;
-  const sway=windActive?windStrength*.34:0;
+
+  // Wind strength is increased by 150%: 0.34 -> 0.85 (2.5x of the previous bend amplitude).
+  const sway=windActive ? windStrength*.85 : 0;
 
   drawBranch(baseX,baseY,trunkLen,-Math.PI/2,trunkWidth,depth,1,p,sway);
+
+  if(generation>=maxGeneration){
+    drawLeaves();
+  }
 }
 
 function doPinchAction(){
@@ -307,9 +349,13 @@ function doPinchAction(){
     message.textContent='TRUNK CREATED — PINCH AGAIN TO GROW';
   }else if(generation<maxGeneration){
     generation++;
-    message.textContent=`GROW — GENERATION ${generation}`;
+    if(generation>=maxGeneration){
+      message.textContent='FULL GROWN — LEAVES APPEAR';
+    }else{
+      message.textContent=`GROW — GENERATION ${generation}`;
+    }
   }else{
-    message.textContent='MAX GENERATION';
+    message.textContent='FULL GROWN — LEAVES ARE OUT';
   }
   draw();
 }
